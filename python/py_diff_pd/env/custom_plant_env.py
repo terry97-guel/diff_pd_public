@@ -141,7 +141,7 @@ class CPlantEnv3d(EnvBase):
             texture_img='chkbd_24_0.7', transforms=[('s', 3)])
         
         q = ndarray(mesh.py_vertices())
-        markers = q[self.py_verticesIdxs].reshape(3,-1)
+        markers = q[self.py_verticesIdxs].reshape(-1,3)
         for marker in markers:
             renderer.add_shape_mesh({ 'name': 'sphere', 'center': marker, 'radius': 0.025 },
                 transforms=[('s', 0.4)], color=(0.9, 0.1, 0.1))
