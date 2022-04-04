@@ -9,8 +9,9 @@ from py_diff_pd.common.hex_mesh import generate_hex_mesh
 from py_diff_pd.common.display import render_hex_mesh, export_gif
 from py_diff_pd.core.py_diff_pd_core import HexMesh3d, HexDeformable, StdRealVector
 from py_diff_pd.common.project_path import root_path
+from py_diff_pd.common.renderer import PbrtRenderer
 
-class PlantEnv3d(EnvBase):
+class CPlantEnv3d(EnvBase):
     def __init__(self, seed, folder, options):
         EnvBase.__init__(self, folder)
 
@@ -71,6 +72,24 @@ class PlantEnv3d(EnvBase):
         self._color = (0.3, 0.9, 0.3)
         self._scale = scale
 
+        # Set marker
+        for i in range(mesh.NumOfVertices()):
+            x,y,z = mesh.py_vertex(int(i))
+            assert(x == mesh.py_vertices()[i*3])
+            assert(y == mesh.py_vertices()[i*3+1])
+            assert(z == mesh.py_vertices()[i*3+2])
+        
+        Markernumber = 100
+        self.py_verticeIdxs = np.random.randint(mesh.NumOfVertices()-1, size = Markernumber)
+        self.py_verticesIdxs = np.zeros(Markernumber*3,dtype=np.int)
+        
+        for idx,elementidx in enumerate(self.py_verticeIdxs):
+            
+            self.py_verticesIdxs[idx*3] = elementidx*3
+            self.py_verticesIdxs[idx*3+1] = elementidx*3 +1
+            self.py_verticesIdxs[idx*3+2] = elementidx*3 + 2
+            
+            
     def material_stiffness_differential(self, youngs_modulus, poissons_ratio):
         jac = self._material_jacobian(youngs_modulus, poissons_ratio)
         jac_total = np.zeros((2, 2))
@@ -88,6 +107,34 @@ class PlantEnv3d(EnvBase):
         mesh = HexMesh3d()
         mesh.Initialize(str(mesh_file))
         q_ref = ndarray(mesh.py_vertices())
+        q_ref = q_ref[self.py_verticesIdxs]
+        q = q[self.py_verticesIdxs]
         grad = q - q_ref
         loss = 0.5 * grad.dot(grad)
         return loss, grad, np.zeros(q.size)
+    
+    def _display_mesh(self, mesh_file, file_name):
+        options = {
+            'file_name': file_name,
+            'light_map': 'uffizi-large.exr',
+            'sample': self._spp,
+            'max_depth': 2,
+            'camera_pos': self._camera_pos,
+            'camera_lookat': self._camera_lookat,
+            'resolution': self._resolution
+        }
+        renderer = PbrtRenderer(options)
+
+        mesh = HexMesh3d()
+        mesh.Initialize(mesh_file)
+        renderer.add_hex_mesh(mesh, render_voxel_edge=True, color=self._color, transforms=[
+            ('s', self._scale),
+        ])
+        renderer.add_tri_mesh(Path(root_path) / 'asset/mesh/curved_ground.obj',
+            texture_img='chkbd_24_0.7', transforms=[('s', 3)])
+
+        for marker in self.markerVertices:
+            renderer.add_shape_mesh({ 'name': 'sphere', 'center': marker, 'radius': 0.025 },
+                transforms=[('s', 0.4)], color=(0.9, 0.1, 0.1))
+        
+        renderer.render()
