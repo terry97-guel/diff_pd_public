@@ -80,8 +80,11 @@ class CPlantEnv3d(EnvBase):
             assert(z == mesh.py_vertices()[i*3+2])
         
         Markernumber = 100
+        # Idxs of vertice -> (x,y,z) combined
         self.py_verticeIdxs = np.random.randint(mesh.NumOfVertices()-1, size = Markernumber)
+        # Idxs of vertice -> (x),(y),(z)
         self.py_verticesIdxs = np.zeros(Markernumber*3,dtype=np.int)
+        self.markerVertices = []
         
         for idx,elementidx in enumerate(self.py_verticeIdxs):
             
@@ -89,7 +92,11 @@ class CPlantEnv3d(EnvBase):
             self.py_verticesIdxs[idx*3+1] = elementidx*3 +1
             self.py_verticesIdxs[idx*3+2] = elementidx*3 + 2
             
-            
+            # markerpos = mesh.py_vertex(int(elementidx))
+            # self.markerVertices.append(list(markerpos))
+        
+        self.onehot_py_verticesIdxs = np.eye(29763)[self.py_verticesIdxs]
+        self.onehot_py_verticesIdxs = np.sum(self.onehot_py_verticesIdxs,axis=0,dtype=np.int)
     def material_stiffness_differential(self, youngs_modulus, poissons_ratio):
         jac = self._material_jacobian(youngs_modulus, poissons_ratio)
         jac_total = np.zeros((2, 2))
@@ -107,8 +114,8 @@ class CPlantEnv3d(EnvBase):
         mesh = HexMesh3d()
         mesh.Initialize(str(mesh_file))
         q_ref = ndarray(mesh.py_vertices())
-        q_ref = q_ref[self.py_verticesIdxs]
-        q = q[self.py_verticesIdxs]
+        q_ref = q_ref[self.onehot_py_verticesIdxs]
+        q = q[self.onehot_py_verticesIdxs]
         grad = q - q_ref
         loss = 0.5 * grad.dot(grad)
         return loss, grad, np.zeros(q.size)
@@ -132,8 +139,10 @@ class CPlantEnv3d(EnvBase):
         ])
         renderer.add_tri_mesh(Path(root_path) / 'asset/mesh/curved_ground.obj',
             texture_img='chkbd_24_0.7', transforms=[('s', 3)])
-
-        for marker in self.markerVertices:
+        
+        q = ndarray(mesh.py_vertices())
+        markers = q[self.py_verticesIdxs].reshape(3,-1)
+        for marker in markers:
             renderer.add_shape_mesh({ 'name': 'sphere', 'center': marker, 'radius': 0.025 },
                 transforms=[('s', 0.4)], color=(0.9, 0.1, 0.1))
         
