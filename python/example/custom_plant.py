@@ -21,10 +21,6 @@ if __name__ == '__main__':
     youngs_modulus = 1e6
     poissons_ratio = 0.4
     
-
-    
-    
-        
     env = CPlantEnv3d(seed, folder, {
         'youngs_modulus': youngs_modulus,
         'poissons_ratio': poissons_ratio })
