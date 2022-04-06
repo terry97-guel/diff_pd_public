@@ -12,6 +12,7 @@ from py_diff_pd.common.common import print_info, print_ok, print_error
 from py_diff_pd.common.grad_check import check_gradients
 from py_diff_pd.core.py_diff_pd_core import StdRealVector
 from py_diff_pd.env.custom_plant_env import CPlantEnv3d
+from py_diff_pd.common.project_path import root_path
 
 if __name__ == '__main__':
     seed = 42
@@ -19,14 +20,33 @@ if __name__ == '__main__':
     folder = Path('custom_plant')
     youngs_modulus = 1e6
     poissons_ratio = 0.4
+    
+
+    
+    
+        
     env = CPlantEnv3d(seed, folder, {
         'youngs_modulus': youngs_modulus,
         'poissons_ratio': poissons_ratio })
     deformable = env.deformable()
-
+    mesh = env._mesh
+    
+    # Set marker in env
+    Markernumber = 100
+    
+    bin_file_name = Path(root_path) / 'asset' / 'mesh' / 'plant.bin'
+    for i in range(mesh.NumOfVertices()):
+        x,y,z = mesh.py_vertex(int(i))
+        assert(x == mesh.py_vertices()[i*3])
+        assert(y == mesh.py_vertices()[i*3+1])
+        assert(z == mesh.py_vertices()[i*3+2])
+    
+    py_verticeIdxs = np.random.randint(mesh.NumOfVertices()-1, size = Markernumber)
+    env.set_marker(py_verticeIdxs)
+    
     # Optimization parameters.
     methods = ('pd_eigen',)
-    thread_ct = 8
+    thread_ct = 96
     opts = (
         { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
             'use_bfgs': 1, 'bfgs_history_size': 10 },
@@ -69,6 +89,7 @@ if __name__ == '__main__':
     E = np.exp(x_init[0])
     nu = np.exp(x_init[1])
     env_opt = CPlantEnv3d(seed, folder, { 'youngs_modulus': E, 'poissons_ratio': nu })
+    env_opt.set_marker(py_verticeIdxs)
     env_opt.simulate(dt, frame_num, methods[0], opts[0], q0, v0, a0, f0, require_grad=False, vis_folder='init')
 
     # Normalize the loss.
@@ -80,6 +101,7 @@ if __name__ == '__main__':
         E = np.exp(x_rand[0])
         nu = np.exp(x_rand[1])
         env_opt = CPlantEnv3d(seed, folder, { 'youngs_modulus': E, 'poissons_ratio': nu })
+        env_opt.set_marker(py_verticeIdxs)
         loss, _ = env_opt.simulate(dt, frame_num, methods[0], opts[0], q0, v0, a0, f0, require_grad=False, vis_folder=None)
         print('E: {:3e}, nu: {:3f}, loss: {:3f}'.format(E, nu, loss))
         random_loss.append(loss)
@@ -87,6 +109,7 @@ if __name__ == '__main__':
     print_info('Loss range: {:3f}, {:3f}'.format(loss_range[0], loss_range[1]))
     np.random.set_state(rand_state)
 
+    # loss_range=ndarray([0, 24.415163])
     print(loss_range)
     data = { 'loss_range': loss_range }
     for method, opt in zip(reversed(methods), reversed(opts)):
@@ -95,6 +118,7 @@ if __name__ == '__main__':
             E = np.exp(x[0])
             nu = np.exp(x[1])
             env_opt = CPlantEnv3d(seed, folder, { 'youngs_modulus': E, 'poissons_ratio': nu })
+            env_opt.set_marker(py_verticeIdxs)
             loss, _, info = env_opt.simulate(dt, frame_num, method, opt, q0, v0, a0, f0, require_grad=True, vis_folder=None)
             grad = info['material_parameter_gradients']
             grad = grad * np.exp(x)
@@ -122,4 +146,5 @@ if __name__ == '__main__':
         E = np.exp(x_final[0])
         nu = np.exp(x_final[1])
         env_opt = CPlantEnv3d(seed, folder, { 'youngs_modulus': E, 'poissons_ratio': nu })
+        env_opt.set_marker(py_verticeIdxs)
         env_opt.simulate(dt, frame_num, method, opt, q0, v0, a0, f0, require_grad=False, vis_folder=method)
