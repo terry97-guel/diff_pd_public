@@ -108,6 +108,7 @@ class CPlantEnv3d(EnvBase):
 
         mesh = HexMesh3d()
         mesh.Initialize(str(mesh_file))
+        q_ref = ndarray(mesh.py_vertices())
         
         q_ref = np.where(self.onehot_py_verticesIdxs,q_ref,0)
         q = np.where(self.onehot_py_verticesIdxs,q,0)
