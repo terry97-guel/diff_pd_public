@@ -15,7 +15,6 @@ class CRoutingTendonEnv3d(EnvBase):
     def __init__(self, seed, folder, options):
         EnvBase.__init__(self, folder)
 
-        np.random.seed(seed)
         create_folder(folder, exist_ok=True)
 
         muscle_cnt = options['muscle_cnt']
@@ -128,7 +127,7 @@ class CRoutingTendonEnv3d(EnvBase):
         
         NumOfq0 = self._q0.shape[0]
         self.onehot_py_verticesIdxs = np.eye(NumOfq0)[self.py_verticesIdxs]
-        self.onehot_py_verticesIdxs = np.sum(self.onehot_py_verticesIdxs,axis=0,dtype=np.int)
+        self.onehot_py_verticesIdxs = np.sum(self.onehot_py_verticesIdxs,axis=0,dtype=np.bool)
         
     def _display_mesh(self, mesh_file, file_name):
         # Render.
