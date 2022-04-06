@@ -55,6 +55,7 @@ class CPlantEnv3d(EnvBase):
         f_ext = np.zeros(dofs)
 
         # Data members.
+        self._mesh = mesh
         self._deformable = deformable
         self._q0 = q0
         self._v0 = v0
@@ -72,16 +73,10 @@ class CPlantEnv3d(EnvBase):
         self._color = (0.3, 0.9, 0.3)
         self._scale = scale
 
-        # Set marker
-        for i in range(mesh.NumOfVertices()):
-            x,y,z = mesh.py_vertex(int(i))
-            assert(x == mesh.py_vertices()[i*3])
-            assert(y == mesh.py_vertices()[i*3+1])
-            assert(z == mesh.py_vertices()[i*3+2])
-        
-        Markernumber = 100
+    def set_marker(self, py_verticeIdxs):
         # Idxs of vertice -> (x,y,z) combined
-        self.py_verticeIdxs = np.random.randint(mesh.NumOfVertices()-1, size = Markernumber)
+        self.py_verticeIdxs = py_verticeIdxs
+        Markernumber = py_verticeIdxs.shape[0]
         # Idxs of vertice -> (x),(y),(z)
         self.py_verticesIdxs = np.zeros(Markernumber*3,dtype=np.int)
         self.markerVertices = []
