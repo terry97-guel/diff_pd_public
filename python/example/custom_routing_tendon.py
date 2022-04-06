@@ -16,6 +16,7 @@ from py_diff_pd.env.CRoutingTendonEnv import CRoutingTendonEnv3d
 
 if __name__ == '__main__':
     seed = 42
+    np.random.seed(seed)
     folder = Path('custom_routing_tendon')
     youngs_modulus = 5e5
     poissons_ratio = 0.45
@@ -72,7 +73,7 @@ if __name__ == '__main__':
     a0 = variable_to_act(a0)
     
     # Set marker in env
-    Markernumber = 30
+    Markernumber = 5
     
     for i in range(mesh.NumOfVertices()):
         x,y,z = mesh.py_vertex(int(i))
@@ -87,7 +88,13 @@ if __name__ == '__main__':
     env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, [a0 for _ in range(frame_num)], f0, require_grad=False, vis_folder='groundtruth')
     print_info("Groundtruth motion generated")
     
-    # Visualize initial guess.
+    # Inject noise to a
+    noiseScale = 0.3
+    noise = np.random.uniform(a_lb, a_ub) * noiseScale
+    noise = variable_to_act(noise)
+    a0 = a0 + noise
+    
+    # # Visualize initial guess.
     x_lb = ndarray([np.log(1e4), np.log(0.2)])
     x_ub = ndarray([np.log(5e6), np.log(0.45)])
     x_init = np.random.uniform(x_lb, x_ub)
@@ -101,6 +108,7 @@ if __name__ == '__main__':
         'poissons_ratio': np.exp(x_init[1]) })
     env.set_marker(py_verticeIdxs)
     loss, info = env.simulate(dt, frame_num, methods[0], opts[0], q0, v0, [a0 for _ in range(frame_num)], f0, require_grad=False, vis_folder='init')
+    print(loss)
     print_info('Initial guess is ready. You can play it by opening {}/init.gif'.format(folder))
     
     bounds = scipy.optimize.Bounds(x_lb, x_ub)
@@ -127,6 +135,7 @@ if __name__ == '__main__':
     print_info('Loss range: {:3f}, {:3f}'.format(loss_range[0], loss_range[1]))
     np.random.set_state(rand_state)
 
+    # loss_range = np.array([0, 128.36210175])
     print(loss_range)
     data = { 'loss_range': loss_range }
     method_display_names = { 'pd_eigen': 'pd_eigen'}
@@ -141,8 +150,8 @@ if __name__ == '__main__':
                 'muscle_cnt': muscle_cnt,
                 'muscle_ext': muscle_ext,
                 'refinement': refinement,
-                'youngs_modulus': youngs_modulus,
-                'poissons_ratio': poissons_ratio })
+                'youngs_modulus': E,
+                'poissons_ratio': nu })
             env_opt.set_marker(py_verticeIdxs)
             loss, _, info = env_opt.simulate(dt, frame_num, method, opt, q0, v0, [a0 for _ in range(frame_num)], f0, require_grad=True, vis_folder=None)
             grad = info['material_parameter_gradients']
