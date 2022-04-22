@@ -1,2 +1,10 @@
 .vscode/
 .tmp/*
+*.pbrt
+
+custom_routing_tendon/ground*/*
+custom_routing_tendon/pull*/*
+custom_routing_tendon/*.bin
+*.pyc
+
+
