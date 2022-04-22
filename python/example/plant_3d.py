@@ -26,7 +26,7 @@ if __name__ == '__main__':
 
     # Optimization parameters.
     methods = ('pd_eigen',)
-    thread_ct = 8
+    thread_ct = 96
     opts = (
         { 'max_pd_iter': 500, 'max_ls_iter': 10, 'abs_tol': 1e-9, 'rel_tol': 1e-4, 'verbose': 0, 'thread_ct': thread_ct,
             'use_bfgs': 1, 'bfgs_history_size': 10 },
