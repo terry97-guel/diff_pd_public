@@ -1,10 +1,19 @@
 .vscode/
 .tmp/*
 *.pbrt
-
-custom_routing_tendon/ground*/*
-custom_routing_tendon/pull*/*
-custom_routing_tendon/*.bin
 *.pyc
 
 
+custom_routing_tendon/*/*/*.bin
+custom_routing_tendon/*/*/*.png
+custom_routing_tendon/*/*.mp4
+
+custom_routing_tendon/*/*.bin
+custom_routing_tendon/*/*.png
+custom_routing_tendon/*.mp4
+
+
+wandb/*
+custom_routing_tendon/mesh.bin
+python/.tmp/*
+python/py_diff_pd/env/CRoutingTendonEnv.py
