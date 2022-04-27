@@ -13,6 +13,7 @@ from py_diff_pd.common.display import export_gif
 from py_diff_pd.common.project_path import root_path
 from py_diff_pd.common.renderer import PbrtRenderer
 from py_diff_pd.core.py_diff_pd_core import HexMesh3d, HexDeformable, StdRealVector
+from functools import partial
 
 class CRoutingTendonEnv3d(EnvBase):
     def __init__(self, seed, folder, options):
@@ -32,10 +33,10 @@ class CRoutingTendonEnv3d(EnvBase):
         mu = youngs_modulus / (2 * (1 + poissons_ratio))
         density = 1e3
         # Mesh size: 2 x 2 x (muscle_cnt x muscle_ext).
-        cell_nums = (2 * refinement, 2 * refinement, 12 * refinement)
+        cell_nums = (refinement, refinement, 6 * refinement)
         origin = ndarray([0, 0, 0])
         node_nums = tuple(n + 1 for n in cell_nums)
-        dx = 0.01 / refinement
+        dx = 0.02 / refinement
         bin_file_name = folder / 'mesh.bin'
         voxels = np.ones(cell_nums)
         generate_hex_mesh(voxels, dx, origin, bin_file_name)
@@ -62,22 +63,21 @@ class CRoutingTendonEnv3d(EnvBase):
         deformable.AddActuation(actuator_stiffness[0], [0.0, 0.0, 1.0], act_indices)
         act_maps = []
         
-        Tendoncoordinate =(((2,5),(2,11)),
-                           ((5,14),(11,14)),
-                           ((14,11),(14,5)),
-                           ((11,2),(5,2)))
-        
+        Tendoncoordinate =(
+            [(1,3),(1,7)],
+            [(3,9),(7,9)],
+            [(9,7),(9,3)],
+            [(7,1),(3,1)]
+            )
         # Tendoncoordinate =(((2,5),(2,11)),)
         
         for actutation in Tendoncoordinate:
             act_map = []
-            tendon1, tendon2 = actutation
-            for z in range(node_nums[2]):
-                idx = node_nums[2]*node_nums[1]*tendon1[0] + node_nums[2]*tendon1[1] + z
-                act_map.append(idx)
-            for z in range(node_nums[2]):
-                idx = node_nums[2]*node_nums[1]*tendon2[0] + node_nums[2]*tendon2[1] + z
-                act_map.append(idx)
+            for tendon in actutation:
+                for z in range(cell_nums[2]):
+                    idx = cell_nums[2]*cell_nums[1]*tendon[0] + cell_nums[2]*tendon[1] + z
+                    act_map.append(idx)
+
             act_maps.append(act_map)
             
         self.__act_maps = act_maps
@@ -99,7 +99,8 @@ class CRoutingTendonEnv3d(EnvBase):
         self._f_ext = f_ext
         self._stepwise_loss = False
         self._dx = dx
-
+        self._node_nums = node_nums
+        self._cell_nums = cell_nums
         self.__spp = options['spp'] if 'spp' in options else 4
 
     def material_stiffness_differential(self, youngs_modulus, poissons_ratio):
@@ -116,70 +117,89 @@ class CRoutingTendonEnv3d(EnvBase):
     def act_maps(self):
         return self.__act_maps
 
-    # def set_marker(self, py_verticeIdxs):
-    #     # Idxs of vertice -> (x,y,z) combined
-    #     self.py_verticeIdxs = py_verticeIdxs
-    #     Markernumber = py_verticeIdxs.shape[0]
-    #     # Idxs of vertice -> (x),(y),(z)
-    #     self.py_verticesIdxs = np.zeros(Markernumber*3,dtype=np.int)
-    #     self.markerVertices = []
+    def set_marker(self, py_verticeIdxs, verbose):
+        if verbose:
+            # Print marker position
+            for elementidx in py_verticeIdxs:
+                elementidx = int(elementidx)
+                markerposition = self.mesh.py_vertex(elementidx)
+                print("Marker set to [x:{},y:{},z:{}]".format(markerposition[0],markerposition[1],markerposition[2]))
         
-    #     for idx,elementidx in enumerate(self.py_verticeIdxs):
+        # Idxs of vertice -> (x,y,z) combined
+        self.py_verticeIdxs = py_verticeIdxs
+        Markernumber = py_verticeIdxs.shape[0]
+        # Idxs of vertice -> (x),(y),(z)
+        self.py_verticesIdxs = np.zeros(Markernumber*3,dtype=np.int)
+        self.markerVertices = []
+        
+        for idx,elementidx in enumerate(self.py_verticeIdxs):
             
-    #         self.py_verticesIdxs[idx*3] = elementidx*3
-    #         self.py_verticesIdxs[idx*3+1] = elementidx*3 +1
-    #         self.py_verticesIdxs[idx*3+2] = elementidx*3 + 2
+            self.py_verticesIdxs[idx*3] = elementidx*3
+            self.py_verticesIdxs[idx*3+1] = elementidx*3 +1
+            self.py_verticesIdxs[idx*3+2] = elementidx*3 + 2
             
-    #         # markerpos = mesh.py_vertex(int(elementidx))
-    #         # self.markerVertices.append(list(markerpos))
+            # markerpos = mesh.py_vertex(int(elementidx))
+            # self.markerVertices.append(list(markerpos))
         
-    #     NumOfq0 = self._q0.shape[0]
-    #     self.onehot_py_verticesIdxs = np.eye(NumOfq0)[self.py_verticesIdxs]
-    #     self.onehot_py_verticesIdxs = np.sum(self.onehot_py_verticesIdxs,axis=0,dtype=np.bool)
+        NumOfq0 = self._q0.shape[0]
+        self.onehot_py_verticesIdxs = np.eye(NumOfq0)[self.py_verticesIdxs]
+        self.onehot_py_verticesIdxs = np.sum(self.onehot_py_verticesIdxs,axis=0,dtype=np.bool)
         
-    # def _display_mesh(self, mesh_file, file_name):
-    #     # Render.
-    #     options = {
-    #         'file_name': file_name,
-    #         'light_map': 'uffizi-large.exr',
-    #         'sample': self.__spp,
-    #         'max_depth': 2,
-    #         'camera_pos': (0.4, -1., .25),
-    #         'camera_lookat': (0, .15, .15),
-    #     }
-    #     renderer = PbrtRenderer(options)
+    def _display_mesh(self, mesh_file, file_name):
+        # Render.
+        options = {
+            'file_name': file_name,
+            'light_map': 'uffizi-large.exr',
+            'sample': self.__spp,
+            'max_depth': 2,
+            'camera_pos': (0.4, -1., .25),
+            'camera_lookat': (0, .15, .15),
+        }
+        renderer = PbrtRenderer(options)
 
-    #     mesh = HexMesh3d()
-    #     mesh.Initialize(mesh_file)
-    #     renderer.add_hex_mesh(mesh, render_voxel_edge=True, color=(.3, .7, .5), transforms=[
-    #         ('s', 0.4),
-    #     ])
-    #     renderer.add_tri_mesh(Path(root_path) / 'asset/mesh/curved_ground.obj',
-    #         texture_img='chkbd_24_0.7', transforms=[('s', 2)])
+        mesh = HexMesh3d()
+        mesh.Initialize(mesh_file)
+        renderer.add_hex_mesh(mesh, render_voxel_edge=True, color=(.3, .7, .5), transforms=[
+            ('s', self._scale),
+        ])
+        renderer.add_tri_mesh(Path(root_path) / 'asset/mesh/curved_ground.obj',
+            texture_img='chkbd_24_0.7', transforms=[('s', 2)])
 
-    #     # display marker
-    #     q = ndarray(mesh.py_vertices())
-    #     markers = q[self.py_verticesIdxs].reshape(-1,3)
-    #     for marker in markers:
-    #         renderer.add_shape_mesh({ 'name': 'sphere', 'center': marker, 'radius': 0.025 },
-    #             transforms=[('s', 0.4)], color=(0.9, 0.1, 0.1))
-    #     renderer.render()
-
-    def _loss_and_grad(self, q, v):
-        loss = 0
-        grad = np.zeros(q.size)
+        # display marker
+        q = ndarray(mesh.py_vertices())
+        markers = q[self.py_verticesIdxs].reshape(-1,3)
+        for marker in markers:
+            renderer.add_shape_mesh({ 'name': 'sphere', 'center': marker, 'radius': 0.005 },
+                transforms=[('s', self._scale)], color=(0.9, 0.1, 0.1))
         
-    
-        # mesh_file = self._folder / 'groundtruth' / '{:04d}.bin'.format(i)
-        # if not mesh_file.exists(): return 0, np.zeros(q.size), np.zeros(q.size)
-
-        # mesh = HexMesh3d()
-        # mesh.Initialize(str(mesh_file))
-        # q_ref = ndarray(mesh.py_vertices())
+        markers = self.markers.reshape(-1,3)
+        for marker in markers:
+            renderer.add_shape_mesh({ 'name': 'sphere', 'center': marker, 'radius': 0.005 },
+                transforms=[('s', self._scale)], color=(0.1, 0.1, 0.9))
         
-        # q_ref = np.where(self.onehot_py_verticesIdxs,q_ref,0)
-        # q = np.where(self.onehot_py_verticesIdxs,q,0)
-        # grad = q - q_ref
-        # loss = 0.5 * grad.dot(grad)
+        renderer.render()
+
+    def _general_loss_and_grad(self, q, v, markers):
+        # Construct target
+        q_target = np.zeros_like(self.mesh.py_vertices())
+        
+        markers = ndarray(markers).reshape(-1)
+        self.markers = markers
+        assert markers.shape == self.py_verticesIdxs.shape
+        for id,idx in enumerate(self.py_verticesIdxs):
+            q_target[idx] = markers[id]
+        
+        # Construct estimation
+        q = np.where(self.onehot_py_verticesIdxs,q,0)
+        
+        # calculate grad & loss
+        grad = q - q_target
+        grad = grad * 100
+        
+        loss = 0.5 * grad.dot(grad)
+        loss = loss
         return loss, grad, np.zeros(q.size)
+    
+    def _construct_loss_and_grad(self, markers):
+        self._loss_and_grad = partial(self._general_loss_and_grad, markers = markers)
     
