@@ -44,7 +44,7 @@ class CRoutingTendonEnv3d(EnvBase):
         mesh.Initialize(str(bin_file_name))
 
         deformable = HexDeformable()
-        deformable.Initialize(str(bin_file_name), density, 'none', youngs_modulus, poissons_ratio)
+        deformable.Initialize(str(bin_file_name), density, 'neohookean', youngs_modulus, poissons_ratio)
         # Boundary conditions.
         for i in range(node_nums[0]):
             for j in range(node_nums[1]):
@@ -103,6 +103,10 @@ class CRoutingTendonEnv3d(EnvBase):
         self._cell_nums = cell_nums
         self.__spp = options['spp'] if 'spp' in options else 4
 
+    # def material_stiffness_differential(self, youngs_modulus, poissons_ratio):
+    #     # This (0, 2) shape is due to the usage of Neohookean materials.
+    #     return np.zeros((0, 2))
+    
     def material_stiffness_differential(self, youngs_modulus, poissons_ratio):
         jac = self._material_jacobian(youngs_modulus, poissons_ratio)
         jac_total = np.zeros((2, 2))
@@ -145,16 +149,17 @@ class CRoutingTendonEnv3d(EnvBase):
         self.onehot_py_verticesIdxs = np.eye(NumOfq0)[self.py_verticesIdxs]
         self.onehot_py_verticesIdxs = np.sum(self.onehot_py_verticesIdxs,axis=0,dtype=np.bool)
         
-    def _display_mesh(self, mesh_file, file_name):
+    def _display_mesh(self, mesh_file, file_name,options=None):
         # Render.
-        options = {
-            'file_name': file_name,
-            'light_map': 'uffizi-large.exr',
-            'sample': self.__spp,
-            'max_depth': 2,
-            'camera_pos': (0.4, -1., .25),
-            'camera_lookat': (0, .15, .15),
-        }
+        if options == None:
+            options = {
+                'file_name': file_name,
+                'light_map': 'uffizi-large.exr',
+                'sample': self.__spp,
+                'max_depth': 2,
+                'camera_pos': (0.4, -1., .25),
+                'camera_lookat': (0, .15, .15),
+            }
         renderer = PbrtRenderer(options)
 
         mesh = HexMesh3d()
@@ -183,8 +188,6 @@ class CRoutingTendonEnv3d(EnvBase):
         # Construct target
         q_target = np.zeros_like(self.mesh.py_vertices())
         
-        markers = ndarray(markers).reshape(-1)
-        self.markers = markers
         assert markers.shape == self.py_verticesIdxs.shape
         for id,idx in enumerate(self.py_verticesIdxs):
             q_target[idx] = markers[id]
@@ -194,12 +197,14 @@ class CRoutingTendonEnv3d(EnvBase):
         
         # calculate grad & loss
         grad = q - q_target
-        grad = grad * 100
+        grad = grad * 1000
         
         loss = 0.5 * grad.dot(grad)
         loss = loss
         return loss, grad, np.zeros(q.size)
     
     def _construct_loss_and_grad(self, markers):
+        markers = ndarray(markers).reshape(-1)
+        self.markers = markers
         self._loss_and_grad = partial(self._general_loss_and_grad, markers = markers)
     

@@ -89,6 +89,8 @@ if __name__ == '__main__':
     
     env.set_marker(py_verticeIdxs,verbose=True)
     
+    # env = None
+    # print('delete temporary environments')
     
     # Get dataset
     import json
@@ -96,6 +98,7 @@ if __name__ == '__main__':
         open('python/experiment/preprocess/trainInterpolate.json'),open('python/experiment/preprocess/valInterpolate.json')
 
     trainInterpolate, valInterpolate = json.load(trainInter), json.load(valInter)
+
     trainInterpolate, valInterpolate = trainInterpolate['data'], valInterpolate['data']
     trainInter.close(), valInter.close()
     
@@ -128,7 +131,7 @@ if __name__ == '__main__':
             data = np.random.choice(datajson)
             act = data['actuation']
             # print('Actuation:', act)
-            act = [ele/5 for ele in act]
+            act = [ele/1 for ele in act]
             act = variable_to_act(act)
             markers = data['position']
             # print('position:', markers)
@@ -167,13 +170,12 @@ if __name__ == '__main__':
         
         
     ## Set batchsize
-    batchsize = 8
+    batchsize = 32
     
-    ## Initial guess for material parameter.
+    # ## Initial guess for material parameter.
     x_lb = ndarray([np.log(1e4), np.log(0.2)])
-    x_ub = ndarray([np.log(5e6), np.log(0.45)])
+    x_ub = ndarray([np.log(1e7), np.log(0.45)])
     x_init = np.random.uniform(x_lb, x_ub)
-    
     print_info('Simulating initial solution. Please check out the {}/init folder'.format(folder))
     
     loss, info = simulate_batch(x=x_init,datajson = trainInterpolate,batchsize=batchsize, vis_folderprefix='init', requires_grad=False)
@@ -189,7 +191,7 @@ if __name__ == '__main__':
     
     t0 = time.time()
     result = scipy.optimize.minimize(simulate_trainbatch, np.copy(x_init),
-        method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-2, 'maxiter': 10 })
+        method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-2, 'maxiter': 100 })
     t1 = time.time()
     print(result.success)
     x_final = result.x

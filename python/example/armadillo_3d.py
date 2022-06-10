@@ -1,6 +1,6 @@
 import sys
-sys.path.append('../')
-
+# sys.path.append('../')
+sys.path.append('./python')
 import os
 import subprocess
 from pathlib import Path
@@ -52,8 +52,9 @@ def test_armadillo_3d(verbose):
 
     if verbose:
         for method, opt in zip(methods, opts):
-            env.simulate(dt, frame_num, 'pd_eigen' if method == 'pd_no_bfgs' else method,
-                opt, q0, v0, [a0 for _ in range(frame_num)], f0, require_grad=False, vis_folder=method)
+            pass
+            # env.simulate(dt, frame_num, 'pd_eigen' if method == 'pd_no_bfgs' else method,
+                # opt, q0, v0, [a0 for _ in range(frame_num)], f0, require_grad=False, vis_folder=method)
 
     # Benchmark time.
     print('Reporting time cost. DoFs: {:d}, frames: {:d}, dt: {:3.3e}'.format(dofs, frame_num, dt))

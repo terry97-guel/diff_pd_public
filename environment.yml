@@ -1,4 +1,4 @@
-name: diff_pd
+name: diff_pd_temp
 channels:
   - pytorch
   - conda-forge
@@ -75,7 +75,8 @@ dependencies:
   - pyparsing=2.4.7=py_0
   - pyqt=5.9.2=py38h05f1152_4
   - pysocks=1.7.1=py38_0
-  - python=3.8.3=hcff3b4d_2
+    #- python=3.8.3=hcff3b4d_2
+  - python=3.9.7=h12debd9_1
   - python-dateutil=2.8.1=py_0
   - python_abi=3.8=1_cp38
   - pytorch=1.4.0=py3.8_cuda10.1.243_cudnn7.6.3_0
