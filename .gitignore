@@ -19,3 +19,4 @@ python/.tmp/*
 python/py_diff_pd/env/CRoutingTendonEnv.py
 custom_routing_tendon/Baseline/init/*
 custom_routing_tendon/Baseline/val/*
+python/EXPERIMENT_FINGER/wandb/*
