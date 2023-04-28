@@ -22,9 +22,9 @@ else:
     print("Let's do something interesting")
     sys.exit(0)
 
-runname = "Full_Batch_Scale_50"
+runname = "[FINGER]BATCH64"
 
-folder = BASEDIR / 'FINGER_ROUTING_TENDON' / runname
+folder = BASEDIR / 'FINGER_RESULT' / runname
 sys.path.append(str(BASEDIR/".."))
 
 import time
@@ -82,7 +82,7 @@ PROPORTION_MATRIX = PROPORTION_MATRIX[:4,:4]
 
 if __name__ == '__main__':
     if not DEBUG_MODE:
-        wandb.init(project = 'DiffPD with FINGER_DATASET')
+        wandb.init(project = 'DiffPD with FINGER')
         wandb.run.name = str.replace(runname,"_"," ")
     
     
@@ -229,7 +229,7 @@ if __name__ == '__main__':
             else: vis_folder = None
             
             import json
-            with open(f"{folder}/temp/{vis_folder}_act", 'w') as outfile:
+            with open(f"{folder}/{prefix}{vis_folder}_act", 'w') as outfile:
                 json.dump(dict(act=act_raw.tolist()), outfile)
             
             act_frames = []
@@ -346,5 +346,5 @@ if __name__ == '__main__':
     
     loss, info = simulate_batch(x=x_final, dataset = extTestDataset,batchsize=len(extTestDataset), requires_grad=False, prefix = "extTest")
     
-    
+    wandb.finish()
 
