@@ -137,6 +137,7 @@ class CRoutingTendonEnv3d(EnvBase):
         self._cell_nums = cell_nums
         self.__spp = options['spp'] if 'spp' in options else 4
 
+        self._set_display_options('top_view')
     # def material_stiffness_differential(self, youngs_modulus, poissons_ratio):
     #     # This (0, 2) shape is due to the usage of Neohookean materials.
     #     return np.zeros((0, 2))
@@ -182,28 +183,39 @@ class CRoutingTendonEnv3d(EnvBase):
         NumOfq0 = self._q0.shape[0]
         self.onehot_py_verticesIdxs = np.eye(NumOfq0)[self.py_verticesIdxs]
         self.onehot_py_verticesIdxs = np.sum(self.onehot_py_verticesIdxs,axis=0,dtype=np.bool)
-        
-    def _display_mesh(self, mesh_file, file_name,options=None):
-        # Render.
-        if options == None:
+    
+    def _set_display_options(self,options='top_view'):
+        possible_options = dict(
             front_view = {
-                'file_name': file_name,
                 'light_map': 'uffizi-large.exr',
                 'sample': self.__spp,
                 'max_depth': 2,
                 'camera_pos': (0.4, -1., .25),
                 'camera_lookat': (0, .15, .15),
-            }
-            
+                },
             top_view = {
-                'file_name': file_name,
                 'light_map': 'uffizi-large.exr',
                 'sample': self.__spp,
                 'max_depth': 2,
                 'camera_pos': (0.1, 0.1, 1.5),
                 'camera_lookat': (0, .0, -3.1415/2),
-            }
-            options = top_view
+            })
+
+        if type(options) is str:
+            self.options = possible_options[options]
+        elif type(options) is dict:
+            self.options = options
+        else:
+            print("Invalid diplay options!!!")
+            print("Setting to default options!!")
+            self._set_display_options()
+        
+            
+    
+    def _display_mesh(self, mesh_file, file_name):
+        # Render.
+        options = self.options
+        options['file_name'] = file_name
             
         renderer = PbrtRenderer(options)
 

@@ -5,8 +5,26 @@ from pathlib import Path
 try: 
     get_ipython().__class__.__name__
     BASEDIR = Path().absolute()
-except: BASEDIR = Path(__file__).parent
+except: 
+    BASEDIR = Path(__file__).parent
 
+
+gettrace = getattr(sys, 'gettrace', None)
+if gettrace() is None:
+    print('Run Mode')
+    DEBUG_MODE = False
+    
+elif gettrace():
+    print('Debugging Mode... Skip Logging...')
+    DEBUG_MODE = True
+    
+else:
+    print("Let's do something interesting")
+    sys.exit(0)
+
+runname = "Full_Batch_Scale_50"
+
+folder = BASEDIR / 'FINGER_ROUTING_TENDON' / runname
 sys.path.append(str(BASEDIR/".."))
 
 import time
@@ -20,14 +38,14 @@ from py_diff_pd.common.common import print_info, print_ok, print_error
 from py_diff_pd.common.grad_check import check_gradients
 from py_diff_pd.core.py_diff_pd_core import StdRealVector
 from EXPERIMENT_FINGER.env.FINGER_RountingEnv import CRoutingTendonEnv3d 
-from EXPERIMENT_FINGER.dataloader import get_FINGER_Dataset, find_most_extrem
+from EXPERIMENT_FINGER.dataloader import get_dataset, Sampler
 from functools import partial
 import wandb
 import torch
 import random
 
 
-SEED = 42
+SEED = 1
 torch.manual_seed(SEED)
 torch.cuda.manual_seed(SEED)
 torch.backends.cudnn.deterministic = True
@@ -35,20 +53,44 @@ torch.backends.cudnn.benchmark = False
 np.random.seed(SEED)
 random.seed(SEED)
 
+# lr = 2
+
+PROPORTION_MATRIX = np.array(
+    [
+        [1,0.1,0.4,0.4, 0,0,0,0, 0,0,0,0, 0,0,0,0],
+        [0.1,1,0.4,0.4, 0,0,0,0, 0,0,0,0, 0,0,0,0],
+        [0.4,0.4,1,0.1, 0,0,0,0, 0,0,0,0, 0,0,0,0],
+        [0.4,0.4,0.1,1, 0,0,0,0, 0,0,0,0, 0,0,0,0],
+        
+        [0,0,0,0,  1,0.1,0.4,0.4, 0,0,0,0, 0,0,0,0],
+        [0,0,0,0,  0.1,1,0.4,0.4,  0,0,0,0, 0,0,0,0],
+        [0,0,0,0,  0.4,0.4,1,0.1, 0,0,0,0, 0,0,0,0],
+        [0,0,0,0,  0.4,0.4,0.1,1, 0,0,0,0, 0,0,0,0],
+        
+        [0,0,0,0, 0,0,0,0, 1,0.1,0.4,0.4, 0,0,0,0],
+        [0,0,0,0, 0,0,0,0, 0.1,1,0.4,0.4, 0,0,0,0],
+        [0,0,0,0, 0,0,0,0, 0.4,0.4,1,0.1, 0,0,0,0],
+        [0,0,0,0, 0,0,0,0, 0.4,0.4,0.1,1, 0,0,0,0],
+        
+        [0,0,0,0, 0,0,0,0, 0,0,0,0, 1,0.1,0.4,0.4],
+        [0,0,0,0, 0,0,0,0, 0,0,0,0, 0.1,1,0.4,0.4],
+        [0,0,0,0, 0,0,0,0, 0,0,0,0, 0.4,0.4,1,0.1],
+        [0,0,0,0, 0,0,0,0, 0,0,0,0, 0.4,0.4,0.1,1],
+        ])
+PROPORTION_MATRIX = PROPORTION_MATRIX[:4,:4]
+
+
 if __name__ == '__main__':
-    wandb.init(project = 'DiffPD with FINGER_DATASET')
-    wandb.run.name = 'Baseline_Test_L1'
+    if not DEBUG_MODE:
+        wandb.init(project = 'DiffPD with FINGER_DATASET')
+        wandb.run.name = str.replace(runname,"_"," ")
     
     
-    seed = 42
-    np.random.seed(seed)
-    folder = BASEDIR / 'FINGER_ROUTING_TENDON'
     youngs_modulus = 5e5
     poissons_ratio = 0.45
     refinement = 4
     muscle_cnt = 8
-    act_max = 2
-    env = CRoutingTendonEnv3d(seed, folder, {
+    env = CRoutingTendonEnv3d(SEED, folder, {
         'muscle_cnt': muscle_cnt,
         'refinement': refinement,
         'youngs_modulus': youngs_modulus,
@@ -71,7 +113,7 @@ if __name__ == '__main__':
     opts = (pd_opt,)
 
     dt = 1e-2
-    frame_num = 10
+    frame_num = 15
 
     # Initial state.
     dofs = deformable.dofs()
@@ -110,19 +152,27 @@ if __name__ == '__main__':
     
     
     # Get dataset
-    trainDataset,valDataset,testDataset,extTestDataset = get_FINGER_Dataset(BASEDIR)
+    trainDataset,valDataset,testDataset,extTestDataset = get_dataset(f"python/EXPERIMENT_FINGER/FINGER.json")
     
-# Set method
+    # Set method
     method,opt = methods[0], opts[0]
     
-    def simulate_batch(x, dataset, batchsize=16, vis_folderprefix=None, requires_grad=False, batchidxs = None):
+    # p_offset
+    idx = torch.argmin(torch.norm(trainDataset.motor_control - torch.tensor([0,0]), dim=1))
+    init_pose = trainDataset.position[idx].flatten()
+    p_offset = np.array([init_pose[0], init_pose[1], 0])
+    
+    def simulate_batch(x, dataset, batchsize=16, vis_folderprefix=None, requires_grad=False, batchidxs = None, prefix = None):
+        if prefix is None:
+            prefix = vis_folderprefix
+            
         
         E = np.exp(x[0])
         nu = np.exp(x[1])
         
         if vis_folderprefix==None: savefolder=folder
         else: savefolder = folder / vis_folderprefix
-        env = CRoutingTendonEnv3d(seed, savefolder, {
+        env = CRoutingTendonEnv3d(SEED, savefolder, {
         'muscle_cnt': muscle_cnt,
         'refinement': refinement,
         'youngs_modulus': E,
@@ -142,72 +192,137 @@ if __name__ == '__main__':
             batchsize = len(batchidxs)
             print("Batchidxs Explicitly Defined")
         
+        FAILED_NUMBER = 0
         for batchidx,idx in enumerate(batchidxs):
             print("Optimizing... batchidx:{}/{}".format(batchidx+1,batchsize))
             
-            act, markers = dataset.__getitem__(idx)
-            print('actuation: ', act)
-            print('position:', markers)
+            datapoint = dataset.__getitem__(idx)
+            act_raw = datapoint['motor_control']
             
-            act = variable_to_act(act)
+            temp = np.zeros(4)
+            if act_raw[0]>0:
+                temp[0] = act_raw[0]
+            else:
+                temp[1] = -act_raw[0]
+                
+            if act_raw[1]>0:
+                temp[2] = act_raw[1]
+            else:
+                temp[3] = -act_raw[1]
+            
+            # act_raw = temp/16_000
+            act_raw = temp/50
+            
+            act_raw = PROPORTION_MATRIX @ act_raw
+            
+            act_raw = act_raw[[2,0,3,1]]
+            
+            markers = datapoint['position'].flatten() - p_offset + torch.tensor([10,10,.0])/1000
+            print('actuation: ', act_raw)
+            print('position:', markers)
+
+            act = variable_to_act(act_raw)
             env._construct_loss_and_grad(markers)
             
             # set output folder path
             if not vis_folderprefix==None: vis_folder = vis_folderprefix + str(batchidx+1)
             else: vis_folder = None
             
+            import json
+            with open(f"{folder}/temp/{vis_folder}_act", 'w') as outfile:
+                json.dump(dict(act=act_raw.tolist()), outfile)
+            
+            act_frames = []
+            for _ in range(frame_num):
+                act_frames.append(act)
+            
             if requires_grad:
-                loss, _, info = env.simulate(dt, frame_num, method, opt, q0, v0, [act for _ in range(frame_num)], f0, require_grad=requires_grad, vis_folder=vis_folder)
+                try:
+                    loss, _, info = env.simulate(dt, frame_num, method, opt, q0, v0, act_frames, f0, require_grad=requires_grad, vis_folder=vis_folder)
+                except RuntimeError:
+                    print("[WARNING!!] SIMULATION HAS FAILED TO CONVERGE!!")
+                    print("Skipping Current MOTOR COMMAND!!")
+                    FAILED_NUMBER = FAILED_NUMBER + 1
+                    continue
                 grad = info['material_parameter_gradients']
-                print('loss: {:8.3f}, |grad|: {:8.3f}, E: {:8.3e}, nu: {:4.3f}, forward time: {:6.3f}s, backward time: {:6.3f}s'.format(
-                    loss, np.linalg.norm(grad), E, nu, info['forward_time'], info['backward_time']))
+                print('loss: {:8.3f}, |grad|: {:8.3f}, gradE{:12.3e}, gradNu{:12.3e}, E: {:8.3e}, nu: {:4.3f}, forward time: {:6.3f}s, backward time: {:6.3f}s'.format(
+                    loss, np.linalg.norm(grad), grad[0], grad[1], E, nu, info['forward_time'], info['backward_time']))
             else:
-                loss, info = env.simulate(dt, frame_num, method, opt, q0, v0, [act for _ in range(frame_num)], f0, require_grad=requires_grad, vis_folder=vis_folder)
+                try:
+                    loss, info = env.simulate(dt, frame_num, method, opt, q0, v0, act_frames, f0, require_grad=requires_grad, vis_folder=vis_folder)
+                except RuntimeError:
+                    print("[WARNING!!] SIMULATION HAS FAILED TO CONVERGE!!")
+                    print("Skipping Current MOTOR COMMAND!!")
+                    FAILED_NUMBER = FAILED_NUMBER + 1
+                    continue
                 grad = 0
                 print('loss: {:8.3f}, forward time: {:6.3f}s,'.format(loss, info['forward_time']))
 
-            
             grad = grad * np.exp(x)
-
-            
+            if grad[0]<0 and DEBUG_MODE:
+                print("Found!!!")
+                pass
             losses.append(loss)
             grads.append(grad)
         
         losses,grads = np.array(losses), np.array(grads)
-        
         avgLoss, avgGrads = losses.mean(0), grads.mean(0)
-
         
-        if requires_grad:
-            wandb.log({'train_Loss':avgLoss, 'logEGrads':float(avgGrads[0]),'NuGrads':float(avgGrads[1]), 'E':E, 'nu':nu})
-
+        # avgGrads = avgGrads * lr
+        FAILED_RATIO = FAILED_NUMBER / len(batchidxs)
+        if not DEBUG_MODE:
+            if requires_grad:
+                wandb.log(
+                    {prefix+'_L2Loss':avgLoss, prefix+'_L1_Loss':(2*avgLoss)**(1/2), \
+                        prefix+'_logEGrads':float(avgGrads[0]),prefix+'_NuGrads':float(avgGrads[1]), \
+                            prefix+'_E':E, prefix+'_nu':nu, prefix+'_FAILED_RATIO':FAILED_RATIO})
+            else:
+                wandb.log({prefix+'_L1_Loss':(2*avgLoss)**(1/2), prefix+'_FAILED_RATIO':FAILED_RATIO})
+        
         return avgLoss, avgGrads
-        
-        
-    ## Set batchsize
-    batchsize = 64
     
     # ## Initial guess for material parameter.
-    x_lb = ndarray([np.log(5e1), np.log(0.2)])
+    x_lb = ndarray([np.log(5e5), np.log(0.2)])
     x_ub = ndarray([np.log(1e7), np.log(0.45)])
     x_init = np.random.uniform(x_lb, x_ub)
     print_info('Simulating initial solution. Please check out the {}/init folder'.format(folder))
     
     ##### Simulate INIT  #####
-    batchidxs = find_most_extrem(trainDataset)
-    loss, info = simulate_batch(x=x_init,dataset = trainDataset, vis_folderprefix='init', requires_grad=False, batchidxs = batchidxs)
-    wandb.log({'Loss_Extrem_test':(2*loss)**(1/2)})    
+    batch_idxs_saved = []
+    
+    idx = torch.argmin(torch.norm(trainDataset.motor_control - torch.tensor([1000,0]), dim=1))
+    batch_idxs_saved.append(idx)
+
+    idx = torch.argmin(torch.norm(trainDataset.motor_control - torch.tensor([-1000,0]), dim=1))
+    batch_idxs_saved.append(idx)
+
+    idx = torch.argmin(torch.norm(trainDataset.motor_control - torch.tensor([0,1000]), dim=1))
+    batch_idxs_saved.append(idx)
+
+    idx = torch.argmin(torch.norm(trainDataset.motor_control - torch.tensor([0,-1000]), dim=1))
+    batch_idxs_saved.append(idx)
+    batch_idxs_saved = np.array(batch_idxs_saved)
+    
+    # loss, info = simulate_batch(x=x_init,dataset = trainDataset, vis_folderprefix='init', requires_grad=False, batchidxs = batchidxs)
+    
+    # if not DEBUG_MODE:
+    loss, info = simulate_batch(x=x_init,dataset = trainDataset, vis_folderprefix='init', requires_grad=True, batchidxs = batch_idxs_saved, prefix = "Init")
     print("Inital L1 Loss: ", (2*loss)**(1/2))
     print_info('Initial guess is ready.')
+    # sys.exit(0)
+    
     
     ##### Train #####
     ## Optimization for material parameter
     Train = True
-    
+     
     t0 = time.time()
     if Train:
+        vis_folderprefix = 'train' if DEBUG_MODE else None
         bounds = scipy.optimize.Bounds(x_lb, x_ub)
-        simulate_trainbatch = partial(simulate_batch,dataset = trainDataset, batchsize = batchsize, vis_folderprefix = None, requires_grad=True)
+        batchsize = 64
+        simulate_trainbatch = partial(simulate_batch,dataset = trainDataset, batchsize = batchsize, vis_folderprefix = vis_folderprefix, requires_grad=True, prefix = "Train")
+        # simulate_trainbatch = partial(simulate_batch,dataset = trainDataset, batchsize = len(trainDataset), vis_folderprefix = vis_folderprefix, requires_grad=True, prefix="Train")
         result = scipy.optimize.minimize(simulate_trainbatch, np.copy(x_init),
             method='L-BFGS-B', jac=True, bounds=bounds, options={ 'ftol': 1e-2, 'maxiter': 100 })
         
@@ -219,21 +334,17 @@ if __name__ == '__main__':
     
     E  = np.exp(x_final[0])
     nu = np.exp(x_final[1])
-    wandb.log({'E':E, 'nu':nu})
+    if not DEBUG_MODE: wandb.log({'E':E, 'nu':nu})
     print_info('Optimizing with {} finished in {:6.3f} seconds'.format(method, t1 - t0))
 
     ##### Test #####
-    batchidxs = find_most_extrem(trainDataset)
-    loss, info = simulate_batch(x=x_init,dataset = trainDataset, vis_folderprefix='final', requires_grad=False, batchidxs = batchidxs)
-    wandb.log({'Loss_Extrem_test':(2*loss)**(1/2)})
+    loss, info = simulate_batch(x=x_init, dataset = trainDataset, vis_folderprefix='final', requires_grad=False, batchidxs = batch_idxs_saved, prefix = "Final")
     
-    loss, info = simulate_batch(x=x_final, dataset = valDataset,batchsize=len(valDataset), vis_folderprefix='val', requires_grad=False)
-    wandb.log({'val_Loss_L1':(2*loss)**(1/2)})
+    loss, info = simulate_batch(x=x_final, dataset = valDataset,batchsize=len(valDataset), requires_grad=False, prefix = "Val")
     
-    loss, info = simulate_batch(x=x_final, dataset = testDataset,batchsize=len(testDataset), requires_grad=False)
-    wandb.log({'test_Loss_L1':(2*loss)**(1/2)})
+    loss, info = simulate_batch(x=x_final, dataset = testDataset,batchsize=len(testDataset), requires_grad=False, prefix = "Test")
     
-    loss, info = simulate_batch(x=x_final, dataset = extTestDataset,batchsize=len(extTestDataset), requires_grad=False)
-    wandb.log({'Ext_test_Loss_L1':(2*loss)**(1/2)})
+    loss, info = simulate_batch(x=x_final, dataset = extTestDataset,batchsize=len(extTestDataset), requires_grad=False, prefix = "extTest")
+    
     
 

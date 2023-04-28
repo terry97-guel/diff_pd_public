@@ -1,5 +1,7 @@
 import sys
 sys.path.append('../')
+sys.path.append('./python')
+
 
 from pathlib import Path
 import time
@@ -44,7 +46,7 @@ if __name__ == '__main__':
     opts = (pd_opt,)
 
     dt = 1e-2
-    frame_num = 100
+    frame_num = 10
 
     # Initial state.
     dofs = deformable.dofs()
@@ -115,7 +117,7 @@ if __name__ == '__main__':
 
     # Normalize the loss.
     rand_state = np.random.get_state()
-    random_guess_num = 16
+    random_guess_num = 0
     random_loss = []
     for _ in range(random_guess_num):
         x_rand = np.random.uniform(low=x_lb, high=x_ub)
@@ -166,6 +168,11 @@ if __name__ == '__main__':
             single_data['forward_time'] = info['forward_time']
             single_data['backward_time'] = info['backward_time']
             data[method].append(single_data)
+            
+            print("grad: \n", grad)
+            print("loss: \n", loss)
+            print("E:", E)
+            print("nu", nu)
             return loss, grad
 
 
